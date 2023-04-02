@@ -2,7 +2,7 @@ const { Schema, SchemaTypes, model } = require("mongoose");
 
 const userSchema = new Schema(
   {
-    username: { type: SchemaTypes.String, required: true },
+    username: { type: SchemaTypes.String, required: true, unique: true },
     password: { type: SchemaTypes.String, required: true },
   },
   { timestamps: true }
