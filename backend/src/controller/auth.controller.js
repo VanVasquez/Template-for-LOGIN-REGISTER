@@ -3,6 +3,8 @@
  */
 const model = require("../models");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+
 const authController = {
   registerAccount: async (req, res) => {
     const { username, password } = req.body;
@@ -26,6 +28,7 @@ const authController = {
       }
     }
   },
+
   loginAccount: async (req, res) => {
     const { username, password } = req.query;
     try {
@@ -38,13 +41,72 @@ const authController = {
       if (!passwordMatch) {
         return res.status(401).json({ message: "Wrong Password" });
       }
+      const existingRefreshToken = await model.RefreshToken.findOne({
+        userId: user._id,
+      });
+      if (existingRefreshToken)
+        await model.RefreshToken.deleteOne({ _id: existingRefreshToken._id });
 
-      res.status(200).json({ user });
+      const accessToken = await jwt.sign(
+        { userId: user._id },
+        process.env.ACCESS_TOKEN_SECRET_KEY,
+        { expiresIn: "5m" }
+      );
+      const refreshToken = await jwt.sign(
+        { userId: user._id },
+        process.env.REFRESH_TOKEN_SECRET_KEY,
+        { expiresIn: "7d" }
+      );
+      const newRefreshToken = new model.RefreshToken({
+        userId: user._id,
+        token: refreshToken,
+      });
+
+      await newRefreshToken.save();
+      res.cookie("jwt", refreshToken, {
+        httpOnly: true,
+        sameSite: "None",
+        secure: true,
+        maxAge: 24 * 60 * 60 * 7000,
+      });
+      res
+        .status(200)
+
+        .json({ accessToken: accessToken, user: user });
     } catch (error) {
       res
         .status(500) //internal server error
         .json({ error: error, message: "Internal Server Error" });
     }
+  },
+
+  logoutAccount: async (req, res) => {
+    const cookies = req.cookies;
+    if (!cookies?.jwt) return res.status(401).json({ message: "Unauthorized" });
+    const refreshToken = cookies.jwt;
+    jwt.verify(
+      refreshToken,
+      process.env.REFRESH_TOKEN_SECRET_KEY,
+      (err, decoded) => {
+        console.log(decoded);
+        if (err) return res.status(401).json({ message: "Unauthorized" });
+        model.User.findById(decoded.userId).then((result) => {
+          if (result)
+            model.RefreshToken.findOneAndDelete({ userId: result._id }).then(
+              () => {
+                res
+                  .status(200)
+                  .clearCookie("jwt", {
+                    httpOnly: true,
+                    sameSite: "None",
+                    secure: true,
+                  })
+                  .json({ message: "Log out successful" });
+              }
+            );
+        });
+      }
+    );
   },
 };
 

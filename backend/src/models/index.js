@@ -1,3 +1,4 @@
 const User = require("./User");
+const RefreshToken = require("./RefreshToken");
 
-module.exports = { User };
+module.exports = { User, RefreshToken };
